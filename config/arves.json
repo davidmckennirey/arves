@@ -1,0 +1,47 @@
+[
+    {
+        "bin": "subfinder",
+        "loc": "https://github.com/projectdiscovery/subfinder",
+        "args": "-d {domain} -config {config}/subfinder-config.yaml -o {output}/subs/{domain}.subfinder.txt -silent",
+        "phase": "dns_enum"
+    },
+    {
+        "bin": "puredns",
+        "loc": "https://github.com/d3mondev/puredns",
+        "args": "bruteforce {config}/all.txt {domain} -r {config}/resolvers.txt --write {output}/subs/{domain}.puredns.txt",
+        "phase": "dns_enum"
+    },
+    {
+        "bin": "dnsx",
+        "loc": "https://github.com/d3mondev/puredns",
+        "args": "-l {output}/subs/all.txt -o {output}/all.dnsx.txt -a -resp -silent",
+        "phase": "dns_valid"
+    },
+    {
+        "bin": "nmap",
+        "loc": "https://nmap.org/download.html",
+        "comment": "nmap is never actually directly run from the program because it is run from naabu"
+    },
+    {
+        "bin": "naabu",
+        "loc": "https://github.com/projectdiscovery/naabu",
+        "args": "-iL {output}/ips.txt -p- -nmap-cli 'nmap'",
+        "phase": "port_scan"
+    },
+    {
+        "bin": "httpx",
+        "loc": "https://github.com/projectdiscovery/httpx"
+    },
+    {
+        "bin": "nuclei",
+        "loc": "https://github.com/projectdiscovery/nuclei"
+    },
+    {
+        "bin": "gau",
+        "loc": "https://github.com/lc/gau"
+    },
+    {
+        "bin": "aquatone",
+        "loc": "https://github.com/michenriksen/aquatone"
+    }
+]
