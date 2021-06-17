@@ -2,11 +2,21 @@
 import argparse
 import os
 import subprocess
-from typing import Dict, List
+from typing import Dict, List, Set
 import shutil
 import asyncio
 import json
 from itertools import chain
+import ipaddress
+
+
+def v(line: str):
+    if verbose:
+        print(line)
+
+
+def w(line: str):
+    print(f"[!] WARNING - {line}")
 
 
 def cli():
@@ -58,7 +68,8 @@ def cli():
         "--ips",
         action="store",
         type=str,
-        help="Input file containing IP addresses",
+        help="Input file containing IP addresses to include in scanning/enumeration",
+        default=None,
     )
     parser.add_argument(
         "-e",
@@ -66,6 +77,7 @@ def cli():
         action="store",
         type=str,
         help="Input file containing IP addresses or hostnames to exclude",
+        default=None,
     )
     parser.add_argument(
         "-c",
@@ -114,6 +126,31 @@ def parse_config(config: str):
     return commands
 
 
+def get_domains(args: argparse.Namespace):
+    """
+    Retrieve the input domains from the CLI and input files as a list.
+
+        Parameters:
+            args (argparse.ArgumentParser): Command line inputs
+
+        Returns:
+            domains (List): List of domains to be enumerated
+    """
+    # If only one input was provided, then convert it to a list
+    if args.domain:
+        return [args.domain]
+    # Otherwise, open the file and read the contents as a list
+    else:
+        try:
+            with open(args.domain_list) as f:
+                file_contents = f.read()
+                domains = file_contents.splitlines()
+            return domains
+        except FileNotFoundError as err:
+            print(f"[!] Could not open input domain list: {args.domain_list}")
+            exit(0)
+
+
 async def execute_command(command: Dict, **kwargs):
     """
     This funciton acts as a wrapper around subprocess.run to run commands. Dynamic input such as
@@ -128,8 +165,8 @@ async def execute_command(command: Dict, **kwargs):
     """
     # Build the command
     cmd = f"{command.get('bin')} {command.get('args')}"
-    for k, v in kwargs.items():
-        cmd = cmd.replace(f"{{{k}}}", v)
+    for key, val in kwargs.items():
+        cmd = cmd.replace(f"{{{key}}}", val)
 
     if dry_run or verbose:
         print(f"[*] Issued: {cmd}")
@@ -141,8 +178,7 @@ async def execute_command(command: Dict, **kwargs):
         )
 
     stdout, stderr = await proc.communicate()
-    if verbose:
-        print(f"[*] Command {cmd!r} exited with code: {proc.returncode}")
+    v(f"[*] Command {cmd!r} exited with code: {proc.returncode}")
     # if stdout:
     #     print(f"[stdout]\n{stdout.decode()}")
     # if stderr:
@@ -165,14 +201,103 @@ def check_bins(commands: List):
     # missing, but we will continue going through the loop to see if anything else is missing
     passed = True
 
-    for cmd in commands:
-        # shutil.which is basically just the platform independant `which` command
-        # this line just checks to see if the binary name is in the path
-        if shutil.which(cmd.get("bin")) == None:
-            print(f"[!] WARNING - Missing binary: {cmd.get('bin')} ({cmd.get('loc')})")
-            passed = False
+    for phase, cmd_list in commands.items():
+        for cmd in cmd_list:
+            # shutil.which is basically just the platform independant `which` command
+            # this line just checks to see if the binary name is in the path
+            if shutil.which(cmd.get("bin")) == None:
+                w(f"Missing binary: {cmd.get('bin')} ({cmd.get('loc')})")
+                passed = False
 
     return passed
+
+
+def read_ips(ip_file: str):
+    """
+    Collect all of the IP addresses from the provided IP list. Expand CIDR ranges.
+
+        Parameters:
+            ip_file (List) - path to the file contining IP addresses belonging to target
+            output (str) - path to output directory
+            exclude_file (str) - path to the file containing IP addresses to remove
+
+        Returns:
+            ips (Set) - The IP addresses from the file in set form
+    """
+    ips = set()
+    try:
+        with open(ip_file) as f:
+            # Read in all the IPs as CIDR, even if they aren't
+            cidrs = [
+                ipaddress.ip_network(cidr, strict=False)
+                for cidr in f.read().splitlines()
+            ]
+            # Then get all the individual ip addresses from the CIDRs
+            for cidr in cidrs:
+                for ip in cidr:
+                    ips.add(str(ip))
+    except FileNotFoundError as err:
+        w(f"Could not open IP address file ({ip_file})")
+    return ips
+
+
+def collect_targets(ip_in_file: str, output: str, ip_ex_file: str, skip_dns: bool):
+    """
+    Collect all of the IP addresses from the provided IP list, as well as from
+    the subdomain enumeration, and write them to a file. This will write 2 files,
+    one with just IP addresses, and one with IP addresses and subdomains (for virtual
+    hosting). This function will also use the exclude file to remove hosts from the
+    final target files.
+
+        Parameters:
+            ip_in_file (List) - path to the file contining IP addresses to include
+            output (str) - path to output directory
+            ip_ex_file (str) - path to the file containing IP addresses to exclude
+            skip_dns (bool) - Whether to read data from DNS folder or not
+
+        Returns:
+            N/A
+    """
+    # Read in the two IP files (if the were provided)
+    # If no IP files were provided just use an empty set
+    if ip_in_file:
+        ip_in = read_ips(ip_file=ip_in_file)
+    else:
+        ip_in = set()
+    if ip_ex_file:
+        ip_ex = read_ips(ip_file=ip_ex_file)
+    else:
+        ip_ex = set()
+
+    ips = ip_in - ip_ex
+    hosts = set()
+
+    # read in the DNS validation files
+    targets_folder = os.path.join(output, "targets")
+    with open(os.path.join(targets_folder, "all.dnsx")) as f:
+        # newline delimited JSON
+        for line in f:
+            record = json.loads(line)
+            # Only proceed if there was an A record (IP address) for the host
+            if record.get("a", False):
+
+                # Add the host to the list of hostnames
+                hosts.add(record.get("host"))
+
+                # Get the A records (IP addresses) for the host and
+                # add the IP to the list if it is not in the exclusion list
+                for ip in record.get("a"):
+                    if ip not in ip_ex:
+                        ips.add(ip)
+
+    # Write the resulting sets to their output files
+    with open(os.path.join(targets_folder, "ips.txt"), "w") as f:
+        f.write("\n".join(ips))
+
+    with open(os.path.join(targets_folder, "hosts.txt"), "w") as f:
+        f.write("\n".join(hosts))
+        f.write("\n")
+        f.write("\n".join(ips))
 
 
 async def dns_enum(commands: List, domains: List, output: str, config: str):
@@ -188,12 +313,19 @@ async def dns_enum(commands: List, domains: List, output: str, config: str):
         Returns:
             N/A
     """
-    if not os.path.exists(output):
-        os.makedirs(os.path.join(output, "subs"))
+    # Make the output "subs" directory
+    subs_folder = os.path.join(output, "subs")
+    if not os.path.exists(subs_folder):
+        os.makedirs(subs_folder)
+
+    # Execute each of the dns_enum commands
     await asyncio.gather(
         *[
             execute_command(
-                command=command, domain=domain, output=output, config=config
+                command=command,
+                domain=domain,
+                output=os.path.join(subs_folder, f"{domain}.{command.get('bin')}"),
+                config=config,
             )
             # This loop will go over all of the target domains
             for domain in domains
@@ -222,63 +354,121 @@ async def dns_validation(commands: List, output: str, config: str):
         with open(os.path.join(subs_folder, sub_file)) as f:
             # Append all of the subs as its own list
             subs.append(f.read().splitlines())
-    
+
     # flatten the lists of subdomains and remove duplicates
     subs = set(chain.from_iterable(subs))
 
     # write the results to a file
-    with open(os.path.join(subs_folder, "all.txt"), "w") as f:
-        f.write('\n'.join(subs))
+    subs_file = os.path.join(subs_folder, "all.txt")
+    with open(subs_file, "w") as f:
+        f.write("\n".join(subs))
 
+    # Make targets folder
+    targets_folder = os.path.join(output, "targets")
+    if not os.path.exists(targets_folder):
+        os.makedirs(targets_folder)
+
+    # Execute DNS validation commands
     await asyncio.gather(
         *[
-            execute_command(command=command, output=output, config=config)
+            execute_command(
+                command=command,
+                output=os.path.join(targets_folder, f"all.{command.get('bin')}"),
+                config=config,
+                input=subs_file,
+            )
             for command in commands
         ]
     )
 
 
-def get_domain_list(args: argparse.ArgumentParser):
+async def port_scan(commands: List, output: str):
     """
-    Retrieve the input domains from the CLI as a list.
+    Perform rapid port scanning via masscan to discover open hosts. Save the
+    discovered open ports to a file.
 
         Parameters:
-            args (argparse.ArgumentParser): Command line inputs
+            commands (List) - List of the command objects to be run
+            output (str) - path to output directory
 
         Returns:
-            domains (List): List of domains to be enumerated
+            discovered_ports (Set) - Set of all discovered open ports
     """
-    # If only one input was provided, then convert it to a list
-    if args.domain:
-        return [args.domain]
-    # Otherwise, open the file and read the contents as a list
-    else:
-        try:
-            with open(args.domain_list) as f:
-                file_contents = f.read()
-                domains = file_contents.splitlines()
-            return domains
-        except FileNotFoundError as err:
-            print(f"[!] Could not open input domain list: {args.domain_list}")
-            exit(0)
+    # Make the scans folder
+    scans_folder = os.path.join(output, "scans", "ports")
+    if not os.path.exists(scans_folder):
+        os.makedirs(scans_folder)
+
+    # Retrieve the target list of IP addresses
+    # Since this phase is just determining open ports, we wont bother
+    # with DNS hostnames
+    ip_file = os.path.join(output, "targets", "ips.txt")
+
+    # The default config will only run masscan, but in case someone wants
+    # to add extra port scanners here, its possible
+    await asyncio.gather(
+        *[
+            execute_command(
+                command=command,
+                output=os.path.join(scans_folder, command.get("bin")),
+                input=ip_file,
+            )
+            for command in commands
+        ]
+    )
+
+    discovered_ports = set()
+    with open(os.path.join(scans_folder, "masscan")) as f:
+        # Read in the masscan output and add all ports listed as "open"
+        # to the discovered_ports set
+        discovered = json.load(f)
+        for host in discovered:
+            for port in host.get("ports"):
+                if port.get("status") == "open":
+                    discovered_ports.add(str(port.get("port")))
+
+    # Write the discovered ports to a file
+    with open(os.path.join(scans_folder, "ports.txt"), "w") as f:
+        f.write(",".join(discovered_ports))
+
+    return discovered_ports
 
 
-def get_command_list(commands: List, phase: str):
+async def validation_scan(commands: List, output: str, ports: Set):
     """
-    Get all the commands from the list with a certain phase (eg. dns_enum)
+    Perform service port scanning via nmap to discover open hosts. Save the
+    discovered open ports to a file.
 
         Parameters:
-            commands (List) - The full list of commands to run
-            phase (str) - The specific phase to filter for
+            commands (List) - List of the command objects to be run
+            output (str) - path to output directory
+            ports (Set) - Set of discovered ports to scan
 
         Returns:
-            r (List) - The filtered list of commands
+            N/A
     """
-    r = []
-    for cmd in commands:
-        if cmd.get("phase") == phase:
-            r.append(cmd)
-    return r
+    scans_folder = os.path.join(output, "scans", "ports")
+
+    # Retrieve the list of hosts to scan
+    # We are scanning the hosts and not just the IPs because the output
+    # from this tool will be feed into other HTTP scanning tools.
+    # Due to virtual hosting, the direct IP address may not be as useful as
+    # the full URL with the hostname.
+    host_file = os.path.join(output, "targets", "hosts.txt")
+
+    # The default config will only run masscan, but in case someone wants
+    # to add extra port scanners here, its possible
+    await asyncio.gather(
+        *[
+            execute_command(
+                command=command,
+                output=os.path.join(scans_folder, command.get("bin")),
+                input=host_file,
+                ports=",".join(ports),
+            )
+            for command in commands
+        ]
+    )
 
 
 async def main():
@@ -296,9 +486,9 @@ async def main():
     # Create the output directory (if it doesn't already exist)
     # And warn the user if the output directory does already exist
     if os.path.exists(args.output):
-        print(
-            f"[!] WARNING - Output directory ({args.output}) already exists\n"
-            f"[!] This script will overwrite the contents of the {args.output} directory"
+        w(
+            f"Output directory ({args.output}) already exists. "
+            f"This script will overwrite the contents of the {args.output} directory"
         )
     else:
         os.makedirs(args.output)
@@ -307,8 +497,8 @@ async def main():
     if args.skip_dns == False:
         print("[+] Running Subdomain Enumeration")
         await dns_enum(
-            commands=get_command_list(commands=commands, phase="dns_enum"),
-            domains=get_domain_list(args),
+            commands=commands.get("dns_enum"),
+            domains=get_domains(args),
             output=args.output,
             config=args.config,
         )
@@ -316,19 +506,37 @@ async def main():
         # Determine live subdomains
         print("[+] Running DNS Validation")
         await dns_validation(
-            commands=get_command_list(commands=commands, phase="dns_valid"),
+            commands=commands.get("dns_valid"),
             output=args.output,
             config=args.config,
         )
 
-    # Port scan the targets
-    # TODO
+    # Assemble the target list
+    collect_targets(
+        ip_in_file=args.ips,
+        ip_ex_file=args.exclude,
+        output=args.output,
+        skip_dns=args.skip_dns,
+    )
 
-    # Use httpx to determine which exposed ports are web servers
+    # Port scan the targets in two phases
+    # The first phase uses masscan to quickly discover all open ports
+    ports = await port_scan(
+        commands=commands.get("port_scan"),
+        output=args.output,
+    )
+
+    # The second phase uses nmap to validate masscan and discover services
+    await validation_scan(
+        commands=commands.get("validation_scan"), output=args.output, ports=ports
+    )
+
+    # Perform HTTP screenshotting on discovered hosts (this has the
+    # added benefit of also producing an easy to use URL list)
+
+    # Now that all services have been enumerated, begin performing HTTP scanning
 
     # Use nuclei to perform vulnerability scanning
-
-    # Use aquatone to perform HTTP screenshotting
 
     # Use gau to retrieve archieved URLs from the target web servers
 
