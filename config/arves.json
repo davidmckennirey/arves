@@ -15,7 +15,7 @@
         {
             "bin": "amass",
             "loc": "https://github.com/OWASP/Amass",
-            "args": "enum -d {domain} -config {config}/amass.ini -o {output}/subs/{domain}.amass.txt",
+            "args": "enum -d {domain} -config {config}/amass.ini -o {output}",
             "phase": "dns_enum"
         }
     ],
@@ -43,17 +43,23 @@
     "screenshot": [
         {
             "bin": "aquatone",
-            "loc": "https://github.com/michenriksen/aquatone"
+            "loc": "https://github.com/michenriksen/aquatone",
+            "args": "-nmap -out {output} --scan-timeout 1000",
+            "stdin": "{input}"
         }
     ],
     "http_scan": [
         {
             "bin": "nuclei",
-            "loc": "https://github.com/projectdiscovery/nuclei"
+            "loc": "https://github.com/projectdiscovery/nuclei",
+            "args": "-config {config}/nuclei-config.yaml -o {output}",
+            "stdin": "{input}"
         },
         {
             "bin": "gau",
-            "loc": "https://github.com/lc/gau"
+            "loc": "https://github.com/lc/gau",
+            "args": "-b jpg,png,gif -o {output}",
+            "stdin": "{input}"
         }
     ]
 }

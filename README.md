@@ -16,6 +16,7 @@ Other features:
 - Install the required binaries
     - ADD A LIST OF REQUIRED BINARIES FOR DEFAULT CONFIG
 - Enter in API keys for `amass` and `subfinder`
+- For OhMyZsh users, unalias `gau` 
 
 ## Usage
 

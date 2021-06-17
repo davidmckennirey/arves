@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import argparse
 import os
-import subprocess
 from typing import Dict, List, Set
 import shutil
 import asyncio
@@ -151,40 +150,6 @@ def get_domains(args: argparse.Namespace):
             exit(0)
 
 
-async def execute_command(command: Dict, **kwargs):
-    """
-    This funciton acts as a wrapper around subprocess.run to run commands. Dynamic input such as
-    {domain} or {config} may be passed in via the kwargs variable.
-
-        Parameters:
-            command (str) - The command to execute
-            kwargs (Dict) - All of the dynamic values to populate the `command` with
-
-        Returns:
-            None
-    """
-    # Build the command
-    cmd = f"{command.get('bin')} {command.get('args')}"
-    for key, val in kwargs.items():
-        cmd = cmd.replace(f"{{{key}}}", val)
-
-    if dry_run or verbose:
-        print(f"[*] Issued: {cmd}")
-
-    if dry_run == False:
-        # Run the command
-        proc = await asyncio.create_subprocess_shell(
-            cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
-        )
-
-    stdout, stderr = await proc.communicate()
-    v(f"[*] Command {cmd!r} exited with code: {proc.returncode}")
-    # if stdout:
-    #     print(f"[stdout]\n{stdout.decode()}")
-    # if stderr:
-    #     print(f"[stderr]\n{stderr.decode()}")
-
-
 def check_bins(commands: List):
     """
     Check that the nessecary binaries are available and on the $PATH
@@ -298,6 +263,59 @@ def collect_targets(ip_in_file: str, output: str, ip_ex_file: str, skip_dns: boo
         f.write("\n".join(hosts))
         f.write("\n")
         f.write("\n".join(ips))
+
+
+async def execute_command(command: Dict, **kwargs):
+    """
+    This funciton acts as a wrapper around subprocess.run to run commands. Dynamic input such as
+    {domain} or {config} may be passed in via the kwargs variable.
+
+        Parameters:
+            command (str) - The command to execute
+            stdin (str) - Any input to pass to the program if it needs input via stdin (looking at
+                            you aquatone)
+            kwargs (Dict) - All of the dynamic values to populate the `command` with
+
+        Returns:
+            None
+    """
+    # Build the command
+    cmd = f"{command.get('bin')} {command.get('args')}"
+    for key, val in kwargs.items():
+        cmd = cmd.replace(f"{{{key}}}", val)
+
+    # If the command requires input from stdin
+    stdin = command.get("stdin", None)
+    if command.get("stdin", None) is not None:
+        for key, val in kwargs.items():
+            stdin = stdin.replace(f"{{{key}}}", val)
+
+    if dry_run or verbose:
+        print(f"[*] Issued: {cmd}")
+
+    if dry_run == False:
+        # Run the command
+        if stdin is None:
+            proc = await asyncio.create_subprocess_shell(
+                cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+        else:
+            proc = await asyncio.create_subprocess_shell(
+                cmd,
+                stdin=asyncio.subprocess.PIPE,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            await proc.communicate(input=bytes(stdin, encoding="utf8"))
+
+        stdout, stderr = await proc.communicate()
+        v(f"[*] Command {cmd!r} exited with code: {proc.returncode}")
+        if stdout:
+            print(f"[stdout]\n{stdout.decode()}")
+        if stderr:
+            print(f"[stderr]\n{stderr.decode()}")
 
 
 async def dns_enum(commands: List, domains: List, output: str, config: str):
@@ -471,6 +489,83 @@ async def validation_scan(commands: List, output: str, ports: Set):
     )
 
 
+async def screenshot(commands: List, output: str):
+    """
+    Perform service port scanning via nmap to discover open hosts. Save the
+    discovered open ports to a file.
+
+        Parameters:
+            commands (List) - List of the command objects to be run
+            output (str) - path to output directory
+            ports (Set) - Set of discovered ports to scan
+
+        Returns:
+            target_urls (str) - Path to the target URLs file
+    """
+    scans_folder = os.path.join(output, "scans")
+
+    # Retrieve the list of hosts to scan
+    # We are scanning the hosts and not just the IPs because the output
+    # from this tool will be feed into other HTTP scanning tools.
+    # Due to virtual hosting, the direct IP address may not be as useful as
+    # the full URL with the hostname.
+    with open(os.path.join(scans_folder, "ports", "nmap.xml")) as f:
+        nmap_file = f.read()
+
+    # The default config will only run masscan, but in case someone wants
+    # to add extra port scanners here, its possible
+    await asyncio.gather(
+        *[
+            execute_command(
+                command=command,
+                output=os.path.join(scans_folder, command.get("bin")),
+                input=nmap_file,
+            )
+            for command in commands
+        ]
+    )
+
+    # return the path to the target urls file
+    return os.path.join(scans_folder, "aquatone", "aquatone_urls.txt")
+
+
+async def http_scan(commands: List, output: str, input: str, config: str):
+    """
+    Perform service port scanning via nmap to discover open hosts. Save the
+    discovered open ports to a file.
+
+        Parameters:
+            commands (List) - List of the command objects to be run
+            output (str) - path to output directory
+            input (str) - input string of URLs
+            config (str) - path to config directory
+
+        Returns:
+            N/A
+    """
+    scans_folder = os.path.join(output, "scans")
+
+    with open(input) as f:
+        targets = f.read()
+
+    # The default config will only run masscan, but in case someone wants
+    # to add extra port scanners here, its possible
+    await asyncio.gather(
+        *[
+            execute_command(
+                command=command,
+                output=os.path.join(scans_folder, command.get("bin")),
+                input=targets,
+                config=config
+            )
+            for command in commands
+        ]
+    )
+
+    # return the path to the target urls file
+    return os.path.join(scans_folder, "aquatone", "aquatone_urls.txt")
+
+
 async def main():
     # Get the user input from the command parser
     args = cli()
@@ -493,52 +588,63 @@ async def main():
     else:
         os.makedirs(args.output)
 
-    # Subdomain Enumeration
-    if args.skip_dns == False:
-        print("[+] Running Subdomain Enumeration")
-        await dns_enum(
-            commands=commands.get("dns_enum"),
-            domains=get_domains(args),
-            output=args.output,
-            config=args.config,
-        )
+    # # Subdomain Enumeration
+    # if args.skip_dns == False:
+    #     print("[+] Running Subdomain Enumeration")
+    #     await dns_enum(
+    #         commands=commands.get("dns_enum"),
+    #         domains=get_domains(args),
+    #         output=args.output,
+    #         config=args.config,
+    #     )
 
-        # Determine live subdomains
-        print("[+] Running DNS Validation")
-        await dns_validation(
-            commands=commands.get("dns_valid"),
-            output=args.output,
-            config=args.config,
-        )
+    #     # Determine live subdomains
+    #     print("[+] Running DNS Validation")
+    #     await dns_validation(
+    #         commands=commands.get("dns_valid"),
+    #         output=args.output,
+    #         config=args.config,
+    #     )
 
-    # Assemble the target list
-    collect_targets(
-        ip_in_file=args.ips,
-        ip_ex_file=args.exclude,
-        output=args.output,
-        skip_dns=args.skip_dns,
-    )
+    # # Assemble the target list
+    # print("[+] Collecting targets")
+    # collect_targets(
+    #     ip_in_file=args.ips,
+    #     ip_ex_file=args.exclude,
+    #     output=args.output,
+    #     skip_dns=args.skip_dns,
+    # )
 
-    # Port scan the targets in two phases
-    # The first phase uses masscan to quickly discover all open ports
-    ports = await port_scan(
-        commands=commands.get("port_scan"),
-        output=args.output,
-    )
+    # # Port scan the targets in two phases
+    # # The first phase uses masscan to quickly discover all open ports
+    # print("[+] Running Inital Port Scan")
+    # ports = await port_scan(
+    #     commands=commands.get("port_scan"),
+    #     output=args.output,
+    # )
 
-    # The second phase uses nmap to validate masscan and discover services
-    await validation_scan(
-        commands=commands.get("validation_scan"), output=args.output, ports=ports
-    )
+    # # The second phase uses nmap to validate masscan and discover services
+    # print("[+] Runnning Validation Port Scan")
+    # await validation_scan(
+    #     commands=commands.get("validation_scan"), output=args.output, ports=ports
+    # )
 
-    # Perform HTTP screenshotting on discovered hosts (this has the
-    # added benefit of also producing an easy to use URL list)
+    # # Perform HTTP screenshotting on discovered hosts (this has the
+    # # added benefit of also producing an easy to use URL list)
+    # print("[+] Runnning HTTP Screenshotting")
+    # target_urls = await screenshot(
+    #     commands=commands.get("screenshot"), output=args.output
+    # )
+    target_urls = os.path.join(args.output, "scans", "aquatone", "aquatone_urls.txt")
 
     # Now that all services have been enumerated, begin performing HTTP scanning
-
-    # Use nuclei to perform vulnerability scanning
-
-    # Use gau to retrieve archieved URLs from the target web servers
+    print("[+] Runnning HTTP Scanning")
+    await http_scan(
+        commands=commands.get("http_scan"),
+        output=args.output,
+        input=target_urls,
+        config=args.config,
+    )
 
 
 if __name__ == "__main__":
