@@ -588,53 +588,53 @@ async def main():
     else:
         os.makedirs(args.output)
 
-    # # Subdomain Enumeration
-    # if args.skip_dns == False:
-    #     print("[+] Running Subdomain Enumeration")
-    #     await dns_enum(
-    #         commands=commands.get("dns_enum"),
-    #         domains=get_domains(args),
-    #         output=args.output,
-    #         config=args.config,
-    #     )
+    # Subdomain Enumeration
+    if args.skip_dns == False:
+        print("[+] Running Subdomain Enumeration")
+        await dns_enum(
+            commands=commands.get("dns_enum"),
+            domains=get_domains(args),
+            output=args.output,
+            config=args.config,
+        )
 
-    #     # Determine live subdomains
-    #     print("[+] Running DNS Validation")
-    #     await dns_validation(
-    #         commands=commands.get("dns_valid"),
-    #         output=args.output,
-    #         config=args.config,
-    #     )
+        # Determine live subdomains
+        print("[+] Running DNS Validation")
+        await dns_validation(
+            commands=commands.get("dns_valid"),
+            output=args.output,
+            config=args.config,
+        )
 
-    # # Assemble the target list
-    # print("[+] Collecting targets")
-    # collect_targets(
-    #     ip_in_file=args.ips,
-    #     ip_ex_file=args.exclude,
-    #     output=args.output,
-    #     skip_dns=args.skip_dns,
-    # )
+    # Assemble the target list
+    print("[+] Collecting targets")
+    collect_targets(
+        ip_in_file=args.ips,
+        ip_ex_file=args.exclude,
+        output=args.output,
+        skip_dns=args.skip_dns,
+    )
 
-    # # Port scan the targets in two phases
-    # # The first phase uses masscan to quickly discover all open ports
-    # print("[+] Running Inital Port Scan")
-    # ports = await port_scan(
-    #     commands=commands.get("port_scan"),
-    #     output=args.output,
-    # )
+    # Port scan the targets in two phases
+    # The first phase uses masscan to quickly discover all open ports
+    print("[+] Running Inital Port Scan")
+    ports = await port_scan(
+        commands=commands.get("port_scan"),
+        output=args.output,
+    )
 
-    # # The second phase uses nmap to validate masscan and discover services
-    # print("[+] Runnning Validation Port Scan")
-    # await validation_scan(
-    #     commands=commands.get("validation_scan"), output=args.output, ports=ports
-    # )
+    # The second phase uses nmap to validate masscan and discover services
+    print("[+] Runnning Validation Port Scan")
+    await validation_scan(
+        commands=commands.get("validation_scan"), output=args.output, ports=ports
+    )
 
-    # # Perform HTTP screenshotting on discovered hosts (this has the
-    # # added benefit of also producing an easy to use URL list)
-    # print("[+] Runnning HTTP Screenshotting")
-    # target_urls = await screenshot(
-    #     commands=commands.get("screenshot"), output=args.output
-    # )
+    # Perform HTTP screenshotting on discovered hosts (this has the
+    # added benefit of also producing an easy to use URL list)
+    print("[+] Runnning HTTP Screenshotting")
+    target_urls = await screenshot(
+        commands=commands.get("screenshot"), output=args.output
+    )
     target_urls = os.path.join(args.output, "scans", "aquatone", "aquatone_urls.txt")
 
     # Now that all services have been enumerated, begin performing HTTP scanning
