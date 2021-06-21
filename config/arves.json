@@ -9,9 +9,7 @@
             "bin": "puredns",
             "loc": "https://github.com/d3mondev/puredns",
             "args": "bruteforce {config}/all.txt {domain} -r {config}/resolvers.txt --write {output}"
-        }
-    ],
-    "amass": [
+        },
         {
             "bin": "amass",
             "loc": "https://github.com/OWASP/Amass",

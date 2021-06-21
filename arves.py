@@ -312,10 +312,10 @@ async def execute_command(command: Dict, **kwargs):
 
         stdout, stderr = await proc.communicate()
         v(f"[*] Command {cmd!r} exited with code: {proc.returncode}")
-        if stdout:
-            print(f"[stdout]\n{stdout.decode()}")
-        if stderr:
-            print(f"[stderr]\n{stderr.decode()}")
+        # if stdout:
+        #     print(f"[stdout]\n{stdout.decode()}")
+        # if stderr:
+        #     print(f"[stderr]\n{stderr.decode()}")
 
 
 async def dns_enum(commands: List, domains: List, output: str, config: str):
