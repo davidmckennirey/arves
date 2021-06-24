@@ -23,6 +23,7 @@ templates:
 - takeovers
 - vulnerabilities
 
+
 # templates to run based on severity, supports single and multiple severity.
 #severity: []
 
@@ -87,13 +88,13 @@ concurrency: 10
 #header: []
 
 # directory storing nuclei-templates
-#update-directory:
+# update-directory: 
 
 # display stats of the running scan
-#stats: false
+stats: true
 
 # disable colors in output
-#no-color: false
+no-color: true
 
 # debugging request
 #debug-req: false

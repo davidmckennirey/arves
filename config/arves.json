@@ -3,17 +3,18 @@
         {
             "bin": "subfinder",
             "loc": "https://github.com/projectdiscovery/subfinder",
-            "args": "-d {domain} -config {config}/subfinder-config.yaml -o {output} -silent"
+            "args": "-dL {target_file} -config {config}/subfinder-config.yaml -o {output} -silent"
         },
         {
             "bin": "puredns",
             "loc": "https://github.com/d3mondev/puredns",
-            "args": "bruteforce {config}/all.txt {domain} -r {config}/resolvers.txt --write {output}"
+            "args": "bruteforce {config}/all.txt {target} -r {config}/resolvers.txt --write {output}",
+            "target_type": "single"
         },
         {
             "bin": "amass",
             "loc": "https://github.com/OWASP/Amass",
-            "args": "enum -d {domain} -config {config}/amass.ini -o {output}",
+            "args": "enum -df {target_file} -config {config}/amass.ini -o {output}",
             "phase": "dns_enum"
         }
     ],
@@ -21,43 +22,41 @@
         {
             "bin": "dnsx",
             "loc": "https://github.com/d3mondev/puredns",
-            "args": "-l {input} -o {output} -a -resp -silent -json -r {config}/resolvers.txt"
+            "args": "-l {target_file} -o {output} -a -resp -silent -json -r {config}/resolvers.txt"
         }
     ],
     "port_scan": [
         {
             "bin": "masscan",
             "loc": "https://github.com/robertdavidgraham/masscan",
-            "args": "-iL {input} -p80,443,8080,8443,65534 --max-rate 1800 -oJ {output}"
+            "args": "-iL {target_file} -p80,443,8080,8443,65534 --max-rate 1800 -oJ {output}"
         }
     ],
     "validation_scan": [
         {
             "bin": "nmap",
             "loc": "https://nmap.org/download.html",
-            "args": "-iL {input} -p {ports} -oA {output}"
-        }
-    ],
-    "screenshot": [
-        {
-            "bin": "aquatone",
-            "loc": "https://github.com/michenriksen/aquatone",
-            "args": "-nmap -out {output} --scan-timeout 1000",
-            "stdin": "{input}"
+            "args": "-iL {target_file} -p {ports} -oA {output}"
         }
     ],
     "http_scan": [
         {
             "bin": "nuclei",
             "loc": "https://github.com/projectdiscovery/nuclei",
-            "args": "-config {config}/nuclei-config.yaml -o {output}",
-            "stdin": "{input}"
+            "args": "-l {target_file} -config {config}/nuclei-config.yaml -o {output}"
+        },
+        {
+            "bin": "aquatone",
+            "loc": "https://github.com/michenriksen/aquatone",
+            "args": "-out {output} --scan-timeout 1000",
+            "stdin": "{target}"
         },
         {
             "bin": "gau",
             "loc": "https://github.com/lc/gau",
             "args": "-b jpg,png,gif -o {output}",
-            "stdin": "{input}"
+            "stdin": "{target}",
+            "target_type": "single"
         }
     ]
 }
