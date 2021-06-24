@@ -94,6 +94,13 @@ def cli():
         default=None,
     )
     parser.add_argument(
+        "--workers",
+        action="store",
+        type=int,
+        help="The maximum amount of commands to run at a time",
+        default=10,
+    )
+    parser.add_argument(
         "-c",
         "--config",
         action="store",
@@ -190,7 +197,9 @@ def check_bins(commands: List):
             # shutil.which is basically just the platform independant `which` command
             # this line just checks to see if the binary name is in the path
             if shutil.which(cmd.get("bin")) == None:
-                w(f"Missing binary: {cmd.get('bin')} ({cmd.get('loc')})")
+                w(
+                    f"Missing binary: {cmd.get('bin')} ({cmd.get('loc', 'No location provided')})"
+                )
                 passed = False
 
     return passed
@@ -450,11 +459,7 @@ class Phase:
     """
 
     def __init__(
-        self,
-        name: str,
-        commands: List,
-        target_file: str,
-        output: str,
+        self, name: str, commands: List, target_file: str, output: str, workers: int
     ) -> None:
         self.name = name
         self.commands = commands
@@ -462,6 +467,7 @@ class Phase:
         self.targets = self._read_targets(target_file)
         self.output = output
         self.log_dir = os.path.join(output, "log")
+        self.sem = asyncio.Semaphore(workers)
 
         # Make the output and log directories
         os.makedirs(self.output, exist_ok=True)
@@ -479,60 +485,61 @@ class Phase:
             Returns:
                 None
         """
-        # Build the command
-        shell_cmd = f"{cmd.get('bin')} {cmd.get('args')}"
-        for key, val in kwargs.items():
-            shell_cmd = shell_cmd.replace(f"{{{key}}}", val)
-
-        # Get the STDIN input (if it was provided)
-        stdin = cmd.get("stdin", None)
-
-        # If the command requires input from stdin
-        if stdin:
-            # This pipe will tell the create_subprocess_shell method to
-            # expect data from STDIN
-            input_pipe = asyncio.subprocess.PIPE
+        async with self.sem:
+            # Build the command
+            shell_cmd = f"{cmd.get('bin')} {cmd.get('args')}"
             for key, val in kwargs.items():
-                stdin = stdin.replace(f"{{{key}}}", val)
-            # convert STDIN into bytes
-            stdin = bytes(stdin, encoding="utf8")
-        else:
-            # If the command doesn't require STDIN then send None
-            # so that create_subprocess_shell doesn't expect anything 
-            input_pipe = None
+                shell_cmd = shell_cmd.replace(f"{{{key}}}", val)
 
-        if verbose:
-            v(f"Issued: {shell_cmd}")
+            # Get the STDIN input (if it was provided)
+            stdin = cmd.get("stdin", None)
 
-        # Write the command to the log file
-        with open(os.path.join(self.log_dir, "_commands.log"), "a") as f:
-            f.write(f"{shell_cmd}\n")
+            # If the command requires input from stdin
+            if stdin:
+                # This pipe will tell the create_subprocess_shell method to
+                # expect data from STDIN
+                input_pipe = asyncio.subprocess.PIPE
+                for key, val in kwargs.items():
+                    stdin = stdin.replace(f"{{{key}}}", val)
+                # convert STDIN into bytes
+                stdin = bytes(stdin, encoding="utf8")
+            else:
+                # If the command doesn't require STDIN then send None
+                # so that create_subprocess_shell doesn't expect anything
+                input_pipe = None
 
-        # Run the command
-        proc = await asyncio.create_subprocess_shell(
-            shell_cmd,
-            stdin=input_pipe,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )         
-        
-        # Send whatever STDIN there is to the process, then wait
-        # for the command to exit and return stdout and stderr
-        stdout, stderr = await proc.communicate(input=stdin)
+            if verbose:
+                v(f"Issued: {shell_cmd}")
 
-        # Get the output from the shell commands
-        # stdout, stderr = await proc.communicate()
-        v(f"Command {shell_cmd!r} exited with code: {proc.returncode}")
+            # Write the command to the log file
+            with open(os.path.join(self.log_dir, "_commands.log"), "a") as f:
+                f.write(f"{shell_cmd}\n")
 
-        # Get the name of the file from the output
-        filename = kwargs.get("output").split("/")[-1]
+            # Run the command
+            proc = await asyncio.create_subprocess_shell(
+                shell_cmd,
+                stdin=input_pipe,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
 
-        # Write the command output to a write to a log file
-        with open(os.path.join(self.log_dir, filename), "w") as f:
-            if stderr:
-                f.write(f"[stderr]\n{stderr.decode()}")
-            if stdout:
-                f.write(f"[stdout]\n{stdout.decode()}\n")
+            # Send whatever STDIN there is to the process, then wait
+            # for the command to exit and return stdout and stderr
+            stdout, stderr = await proc.communicate(input=stdin)
+
+            # Get the output from the shell commands
+            # stdout, stderr = await proc.communicate()
+            v(f"Command {shell_cmd!r} exited with code: {proc.returncode}")
+
+            # Get the name of the file from the output
+            filename = kwargs.get("output").split("/")[-1]
+
+            # Write the command output to a write to a log file
+            with open(os.path.join(self.log_dir, filename), "w") as f:
+                if stderr:
+                    f.write(f"[stderr]\n{stderr.decode()}")
+                if stdout:
+                    f.write(f"[stdout]\n{stdout.decode()}\n")
 
     @staticmethod
     def _read_targets(target_file):
@@ -619,6 +626,7 @@ async def main():
             commands.get(args.phase),
             target_file=args.target_file,
             output=args.output,
+            workers=args.workers,
         ).run(config=args.config)
     else:
         # Create the initial "domains" target file
@@ -634,6 +642,7 @@ async def main():
             commands.get("dns_enum"),
             target_file=target_file,
             output=args.output,
+            workers=args.workers,
         ).run(config=args.config)
 
         # Collect the subdomains from the DNS enumeration
@@ -647,6 +656,7 @@ async def main():
             commands.get("dns_valid"),
             target_file=target_file,
             output=args.output,
+            workers=args.workers,
         ).run(config=args.config)
 
         # Collect the active hosts from the DNS enumeration
@@ -660,6 +670,7 @@ async def main():
             commands.get("port_scan"),
             target_file=target_file,
             output=args.output,
+            workers=args.workers,
         ).run(config=args.config)
 
         # Collect the active hosts from the DNS enumeration
@@ -671,6 +682,7 @@ async def main():
             commands.get("validation_scan"),
             target_file=target_file,
             output=args.output,
+            workers=args.workers,
         ).run(config=args.config, ports=ports)
 
         # Collect the web servers from the nmap results
@@ -682,9 +694,11 @@ async def main():
             commands.get("http_scan"),
             target_file=target_file,
             output=args.output,
+            workers=args.workers,
         ).run(config=args.config)
 
     i("Completed Scanning!")
+
 
 if __name__ == "__main__":
     asyncio.run(main())
