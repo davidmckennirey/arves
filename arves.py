@@ -339,13 +339,13 @@ def collect_ips(output: str, include_file: str, exclude_file: str):
             target_file=include_file, resolve_hostnames=True
         )
     else:
-        in_hostnames, in_ips = set()
+        in_hostnames = in_ips = set()
     if exclude_file:
         ex_hostnames, ex_ips = read_target_file(
             target_file=exclude_file, resolve_hostnames=False
         )
     else:
-        ex_hostnames, ex_ips = set()
+        ex_hostnames = ex_ips = set()
 
     # read in the DNS validation file
     dns_file = os.path.join(output, "dns_valid", "dnsx")
@@ -612,10 +612,8 @@ async def main():
     # Create the output directory (if it doesn't already exist)
     # And warn the user if the output directory does already exist
     if os.path.exists(args.output):
-        w(
-            f'Output directory ({args.output}) already exists. \
-                This script will overwrite the contents of the "{args.output}" directory.'
-        )
+        w(f'Output directory ({args.output}) already exists. '
+            'This script will overwrite the contents of the "{args.output}" directory.')
 
     # Create the targets directory that will hold the target files for each phase
     os.makedirs(os.path.join(args.output, "targets"), exist_ok=True)

@@ -3,7 +3,7 @@
         {
             "bin": "subfinder",
             "loc": "https://github.com/projectdiscovery/subfinder",
-            "args": "-dL {target_file} -config {config}/subfinder-config.yaml -o {output} -silent"
+            "args": "-dL {target_file} -config {config}/subfinder-config.yaml -o {output}"
         },
         {
             "bin": "puredns",
@@ -21,29 +21,35 @@
     "dns_valid": [
         {
             "bin": "dnsx",
-            "loc": "https://github.com/d3mondev/puredns",
-            "args": "-l {target_file} -o {output} -a -resp -silent -json -r {config}/resolvers.txt"
+            "loc": "https://github.com/projectdiscovery/dnsx",
+            "args": "-l {target_file} -o {output} -a -resp -json -r {config}/resolvers.txt"
         }
     ],
     "port_scan": [
         {
             "bin": "masscan",
             "loc": "https://github.com/robertdavidgraham/masscan",
-            "args": "-iL {target_file} -p80,443,8080,8443,65534 --max-rate 1800 -oJ {output}"
+            "args": "-iL {target_file} -p- --max-rate 1800 -oJ {output}"
         }
     ],
     "validation_scan": [
         {
             "bin": "nmap",
             "loc": "https://nmap.org/download.html",
-            "args": "-iL {target_file} -p {ports} -oA {output}"
+            "args": "-iL {target_file} -p {ports} -oA {output} -v -sS -sV -sC --version-all -T4 -Pn -R -O --reason --script default,http-enum,http-default-accounts,http-config-backup,http-auth-finder,http-method-tamper,http-vuln-cve2010-0738,http-vuln-cve2010-2861,http-vuln-cve2012-1823,smb-enum-users,smb-enum-shares,nfs-showmount,nfs-statfs,dns-zone-transfer,dns-update,sip-enum-users,afp-ls,ntp-monlist,http-vmware-path-vuln,http-vuln-cve2013-0156,http-coldfusion-subzero,http-adobe-coldfusion-apsa1301,ssl-heartbleed"
+        },
+        {
+            "bin": "nmap",
+            "loc": "https://nmap.org/download.html",
+            "args": "-iL {target_file} -oA {output}_udp -p 53,67-69,123,135,137-139,161,445,500,520,623,631,1434,1900,5060-5061 -v -sU -sV -sC -T4 -Pn -R --version-all --reason --script default,smb-enum-users,smb-enum-shares,nfs-showmount,nfs-statfs,dns-zone-transfer,dns-update,sip-enum-users,ntp-monlist,tftp-enum"
         }
     ],
     "http_scan": [
         {
             "bin": "nuclei",
             "loc": "https://github.com/projectdiscovery/nuclei",
-            "args": "-l {target_file} -config {config}/nuclei-config.yaml -o {output}"
+            "args": "-config {config}/nuclei-config.yaml -o {output}",
+            "stdin": "{target}"
         },
         {
             "bin": "aquatone",
@@ -55,8 +61,7 @@
             "bin": "gau",
             "loc": "https://github.com/lc/gau",
             "args": "-b jpg,png,gif -o {output}",
-            "stdin": "{target}",
-            "target_type": "single"
+            "stdin": "{target}"
         }
     ]
 }
