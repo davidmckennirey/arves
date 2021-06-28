@@ -13,17 +13,37 @@ import socket
 import signal
 
 
+def printc(line, text_color):
+    endc = '\033[0m'
+    vals = {
+        'cyan': '\033[96m',
+        'green': '\033[92m',
+        'warning': '\033[93m',
+        'fail': '\033[91m'
+    }
+
+    if color:
+        print(f"{vals.get(text_color)}{line}{endc}")
+    else:
+        print(line)
+
+
 def v(line: str):
     if verbose:
-        print(f"[+] {line}")
+        printc(f"[+] {line}", "cyan")
 
 
 def w(line: str):
-    print(f"[!] WARNING - {line}")
+    printc(f"[!] WARNING - {line}", "warning")
 
 
 def i(line: str):
-    print(f"[*] {line}")
+    printc(f"[*] {line}", "green")
+
+
+def e(line: str):
+    printc(f"[!] ERROR - {line}, exiting...", "fail")
+    exit(-1)
 
 
 def cli():
@@ -42,6 +62,12 @@ def cli():
         "--verbose",
         action="store_true",
         help="Enable verbose output (display each command)",
+        default=False,
+    )
+    parser.add_argument(
+        "--no-color",
+        action="store_true",
+        help="Do not display colored output",
         default=False,
     )
     parser.add_argument(
@@ -122,18 +148,17 @@ def cli():
     args = parser.parse_args()
 
     if args.phase and not args.target_file:
-        w("If the --phase flag is provided then a --target-file must also be provided.")
-        exit(-1)
+        e("If the --phase flag is provided then a --target-file must also be provided")
     if args.target_file and not args.phase:
-        w("A --target-file was provided but no --phase was provided.")
-        exit(-1)
+        e("A --target-file was provided but no --phase was provided")
 
     # TODO do more error checking here, such as checking that all provided files exist
 
-    # Seting the verbose and dry run flags
+    # Seting the verbose and color flags
     global verbose
-    global dry_run
+    global color
     verbose = args.verbose
+    color = not args.no_color
 
     return args
 
@@ -152,8 +177,7 @@ def parse_config(config: str):
         with open(f"{config}/arves.json") as f:
             commands = json.load(f)
     except FileNotFoundError as err:
-        w(f"Error opening config file: {config}/arves.json")
-        exit(-1)
+        e(f"Could not open config file: {config}/arves.json")
 
     return commands
 
@@ -198,9 +222,7 @@ def check_bins(commands: List):
             # shutil.which is basically just the platform independant `which` command
             # this line just checks to see if the binary name is in the path
             if shutil.which(cmd.get("bin")) == None:
-                w(
-                    f"Missing binary: {cmd.get('bin')} ({cmd.get('loc', 'No location provided')})"
-                )
+                w(f"Missing binary: {cmd.get('bin')} ({cmd.get('loc', 'No location provided')})")
                 passed = False
 
     return passed
@@ -276,8 +298,7 @@ def collect_domains(output: str, input_domains: str, domain_file: str):
                 file_contents = f.read()
                 domains.update(file_contents.splitlines())
         except FileNotFoundError as err:
-            w(f"Could not open input domain list: {domain_file}")
-            exit(-1)
+            e(f"Could not open input domain list ({domain_file})")
 
     # Write the domains to a file
     domain_file = os.path.join(output, "targets", "domains.txt")
@@ -531,9 +552,12 @@ class Phase:
             # Send whatever STDIN there is to the process, then wait
             # for the command to exit and return stdout and stderr
             stdout, stderr = await proc.communicate(input=stdin)
-            v(f"Command {shell_cmd!r} exited with code: {proc.returncode}")
+            if proc.returncode == 0:
+                i(f"Command {shell_cmd!r} exited with code: {proc.returncode}")
+            else:
+                w(f"Command {shell_cmd!r} exited with code: {proc.returncode}")
 
-            # Get the name of the file from the output
+            # Get the name of the log file from the output variable
             filename = kwargs.get("output").split("/")[-1]
 
             # Write the command output to a write to a log file
@@ -553,8 +577,8 @@ class Phase:
         """
         # Get input from the user about how to proceed
         print("")
-        i(f"Recieved {signal.name} signal. Please enter \"1\" or \"2\" at the prompt below to select from"
-            " the two options.")
+        print(f"Recieved {signal.name} signal. Please enter \"1\" or \"2\" at the prompt below to select from"
+              " the two options.")
         print("1) End execution of the program.")
         print(f"2) End the {self.name} phase and continue to the next phase. (WARNING - "
               "This may cause errors)")
@@ -646,13 +670,11 @@ async def main():
     # This only works on Unix, gotta figure out a windows alternative
     # If this script is calling nmap, then it must be run with sudo
     if (args.phase == None or args.phase == "validation_scan") and os.geteuid() != 0:
-        w("This script must be run with sudo, exiting...")
-        exit(-1)
+        e("This script must be run with sudo")
 
     # Make sure the requried bins are installed
     if check_bins(commands=commands) == False:
-        w(f"Not all nessecary binaries were found on the $PATH, exiting...")
-        exit(-1)
+        e(f"Not all nessecary binaries were found on the $PATH")
 
     # Create the output directory (if it doesn't already exist)
     # And warn the user if the output directory does already exist
@@ -740,11 +762,10 @@ async def main():
             workers=args.workers,
         ).run(config=args.config)
 
+    i("Completed Scanning!")
 
 if __name__ == "__main__":
     try:
         asyncio.run(main())
     except asyncio.CancelledError:
         i("Ending execution...")
-    finally:
-        i("Completed Scanning!")
