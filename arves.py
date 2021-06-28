@@ -453,9 +453,9 @@ def collect_webservers(output: str):
 
 class Phase:
     """
-    This class represents the base 'phase' of the recon scanning process, which the individual
-    phases will inherit. This will hold all of the variables that will be used to replace the
-    {vars} in the commands objects.
+    This class represents the a 'phase' of the recon scanning process. This is initialized with all
+    of the variables that the phase needs to run. The run() method is used to actually execute the
+    phase of the scan.
     """
 
     def __init__(
@@ -472,6 +472,11 @@ class Phase:
         # Make the output and log directories
         os.makedirs(self.output, exist_ok=True)
         os.makedirs(self.log_dir, exist_ok=True)
+
+    @staticmethod
+    def _read_targets(target_file):
+        with open(target_file) as f:
+            return f.read().splitlines()
 
     async def _run_cmd(self, cmd, **kwargs):
         """
@@ -508,8 +513,7 @@ class Phase:
                 # so that create_subprocess_shell doesn't expect anything
                 input_pipe = None
 
-            if verbose:
-                v(f"Issued: {shell_cmd}")
+            i(f"Issued: {shell_cmd}")
 
             # Write the command to the log file
             with open(os.path.join(self.log_dir, "_commands.log"), "a") as f:
@@ -526,9 +530,6 @@ class Phase:
             # Send whatever STDIN there is to the process, then wait
             # for the command to exit and return stdout and stderr
             stdout, stderr = await proc.communicate(input=stdin)
-
-            # Get the output from the shell commands
-            # stdout, stderr = await proc.communicate()
             v(f"Command {shell_cmd!r} exited with code: {proc.returncode}")
 
             # Get the name of the file from the output
@@ -540,11 +541,6 @@ class Phase:
                     f.write(f"[stderr]\n{stderr.decode()}")
                 if stdout:
                     f.write(f"[stdout]\n{stdout.decode()}\n")
-
-    @staticmethod
-    def _read_targets(target_file):
-        with open(target_file) as f:
-            return f.read().splitlines()
 
     async def run(self, **kwargs):
         """
@@ -613,7 +609,7 @@ async def main():
     # And warn the user if the output directory does already exist
     if os.path.exists(args.output):
         w(f'Output directory ({args.output}) already exists. '
-            'This script will overwrite the contents of the "{args.output}" directory.')
+            f'This script will overwrite the contents of the "{args.output}" directory.')
 
     # Create the targets directory that will hold the target files for each phase
     os.makedirs(os.path.join(args.output, "targets"), exist_ok=True)
