@@ -601,7 +601,8 @@ async def main():
     commands = parse_config(args.config)
 
     # This only works on Unix, gotta figure out a windows alternative
-    if os.geteuid() != 0:
+    # If this script is calling nmap, then it must be run with sudo
+    if (args.phase == None or args.phase == "validation_scan") and os.geteuid() != 0:
         w("This script must be run with sudo, exiting...")
         exit(-1)
 
