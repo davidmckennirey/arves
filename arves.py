@@ -10,6 +10,7 @@ import ipaddress
 from libnmap.parser import NmapParser
 from urllib.parse import urlparse
 import socket
+import signal
 
 
 def v(line: str):
@@ -542,6 +543,40 @@ class Phase:
                 if stdout:
                     f.write(f"[stdout]\n{stdout.decode()}\n")
 
+    async def _handle_signal(self, signal, loop):
+        """
+        This method will handle the interrupt signals. If the 
+        run() method recives an interrupt signal, it should stop execution and allow
+        the user to determine what to do, which is either go to the next phase (i.e. 
+        dont stop the program) or end the program. Either way, it should cancel all of
+        the current queued tasks.
+        """
+        # Get input from the user about how to proceed
+        print("")
+        i(f"Recieved {signal.name} signal. Please enter \"1\" or \"2\" at the prompt below to select from"
+            " the two options.")
+        print("1) End execution of the program.")
+        print(f"2) End the {self.name} phase and continue to the next phase. (WARNING - "
+              "This may cause errors)")
+        choice = input("> ")
+
+        # input validation of choice
+        while choice != "1" and choice != "2":
+            choice = input(
+                "Invalid selection, Please enter either \"1\" or \"2\": ")
+
+        # If the user selects 2, then end this phase and move on
+        if choice == "2":
+            return
+
+        # The user selected 1, so cancel all queued tasks
+        remaining_tasks = [
+            t for t in asyncio.all_tasks() if t is not asyncio.current_task()]
+        for task in remaining_tasks:
+            task.cancel()
+        i(f"Cancelling {len(remaining_tasks)} remaining tasks...")
+        await asyncio.gather(*remaining_tasks)
+
     async def run(self, **kwargs):
         """
         This method will handle the execution of this phase of the process.
@@ -587,6 +622,14 @@ class Phase:
                         **kwargs,
                     )
                 )
+
+        # Add the signal handler
+        # https://www.roguelynn.com/words/asyncio-graceful-shutdowns/
+        loop = asyncio.get_event_loop()
+        signals = (signal.SIGHUP, signal.SIGTERM, signal.SIGINT)
+        for s in signals:
+            loop.add_signal_handler(
+                s, lambda s=s: asyncio.create_task(self._handle_signal(s, loop)))
 
         # Execute the commands
         i(f"Executing phase: {self.name}")
@@ -636,7 +679,7 @@ async def main():
             domain_file=args.domain_file,
         )
 
-        # Run the DNS enumeration (subdomain enuymeration) phase
+        # Run the DNS enumeration (subdomain enumeration) phase
         await Phase(
             "dns_enum",
             commands.get("dns_enum"),
@@ -697,8 +740,11 @@ async def main():
             workers=args.workers,
         ).run(config=args.config)
 
-    i("Completed Scanning!")
-
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except asyncio.CancelledError:
+        i("Ending execution...")
+    finally:
+        i("Completed Scanning!")
