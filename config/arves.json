@@ -14,8 +14,7 @@
         {
             "bin": "amass",
             "loc": "https://github.com/OWASP/Amass",
-            "args": "enum -df {target_file} -config {config}/amass.ini -o {output}",
-            "phase": "dns_enum"
+            "args": "enum -df {target_file} -config {config}/amass.ini -o {output} -rf {config}/resolvers.txt"
         }
     ],
     "dns_valid": [
@@ -29,7 +28,7 @@
         {
             "bin": "masscan",
             "loc": "https://github.com/robertdavidgraham/masscan",
-            "args": "-iL {target_file} -p- --max-rate 1800 -oJ {output}"
+            "args": "-iL {target_file} -p 1-65535 --max-rate 1800 -oJ {output}"
         }
     ],
     "validation_scan": [
@@ -48,8 +47,7 @@
         {
             "bin": "nuclei",
             "loc": "https://github.com/projectdiscovery/nuclei",
-            "args": "-config {config}/nuclei-config.yaml -o {output}",
-            "stdin": "{target}"
+            "args": "-l (target_file} -config {config}/nuclei-config.yaml -o {output}"
         },
         {
             "bin": "aquatone",
