@@ -600,6 +600,11 @@ async def main():
     # Parse the configuration file
     commands = parse_config(args.config)
 
+    # This only works on Unix, gotta figure out a windows alternative
+    if os.geteuid() != 0:
+        w("This script must be run with sudo, exiting...")
+        exit(-1)
+
     # Make sure the requried bins are installed
     if check_bins(commands=commands) == False:
         w(f"Not all nessecary binaries were found on the $PATH, exiting...")
