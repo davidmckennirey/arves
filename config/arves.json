@@ -47,7 +47,7 @@
         {
             "bin": "nuclei",
             "loc": "https://github.com/projectdiscovery/nuclei",
-            "args": "-l (target_file} -config {config}/nuclei-config.yaml -o {output}"
+            "args": "-l {target_file} -config {config}/nuclei-config.yaml -o {output}"
         },
         {
             "bin": "aquatone",
