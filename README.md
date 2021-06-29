@@ -27,7 +27,7 @@ Now, I can already hear what your thinking, "Isn't this just a shell script with
 Other features:
 - Accepts lists of IP addresses and hostnames to include/exclude from scanning (including CIDR format)
 - Allows for individual "phase" selection if you don't want to perform the entire enumeration and scanning process
-- Third thing?
+- Catches SIGINT (AKA Ctrl-C) signals and allows for skipping hanging commands
 
 ## Set-up
 ARVES requires Python 3.7 or later, since it uses `asyncio` features that were not available before Python 3.7. The following command can be used to install ARVES lone dependancy.
