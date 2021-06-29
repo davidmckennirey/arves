@@ -9,6 +9,7 @@
     - [A Note About Nuclei](#a-note-about-nuclei)
     - [Include / Exclude Files](#include--exclude-files)
     - [Examples](#examples)
+    - [Logging](#logging)
   - [Extending ARVES](#extending-arves)
     - [Keywords](#keywords)
     - [Variables](#variables)
@@ -67,7 +68,7 @@ This was intentional because I was considering virtual hosting, where multiple a
 ### Examples
 TL; DR Give me the examples.
 
-Running a full scan against a single domain
+Running a full scan against a single domain. This requires `sudo` because `nmap` is called with the `-sS` flag.
 ```bash
 sudo python3 arves.py -c config -o output -d hackerone.com
 ```
@@ -77,10 +78,13 @@ Running a full scan against a list of domains with a list of hostnames and IP ad
 sudo python3 arves.py -c config -o output -i include_list.txt -e exclude_list.txt -dL domain_list.txt
 ```
 
-Running just the HTTP scanning phase with a target file
+Running just the HTTP scanning phase with a target file. This doesn't require `sudo` because `nmap` is being run.
 ```bash
-sudo python3 arves.py -c config -o output -p http_scan -tf webservers.txt
+python3 arves.py -c config -o output -p http_scan -tf webservers.txt
 ```
+
+### Logging
+ARVES will create a `log` directory within the output directory, which contains the STDERR and STDOUT messages from all of the commands executed by the program. It will also create a `_commands.log` file which will contain all of the commands run by ARVES.
 
 ## Extending ARVES
 ARVES was designed to be as extensible and customizable as possible; however, I also tried to make the default config as useful as possible right out of the box. The default config tries to strike a balance between practicality and noiseiness. As an example, it *doesn't* run `nikto` on every discovered webserver, because thats just a lot of traffic (I included that example config below). 
@@ -100,7 +104,7 @@ The `arves.json` file defines a few variables that it uses in the commands in ru
 | ------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | {target}      | This variable holds the contents of the `{target_file}`  . If the  `target_type`  is  `single`  then this will contain each individual line of the target file. Otherwise, this will contain the entire contents of the target file, which you might want to use if passing the input via the  `stdin`  keyword. |
 | {target_file} | This variable holds the name of the file containing the targets for each phase.                                                                                                                                                                                                                                  |
-| {output}      | This variable holds the output file for each command. If the  `target_type`  is  `single`  then the output format will be  `[output_folder]/[phase]/[target].[bin_name]` , otherwise, the output format is  `[output_folder]/[phase]/[bin_name]` .                                                               |
+| {output}      | This variable holds the output file for each command. If the  `target_type`  is  `single`  then the output format will be  `[output_folder]/[phase]/[target].[bin_name]` , otherwise, the output format is  `[output_folder]/[phase]/[bin_name]`. ARVES will also strip any protocol and path information from a URL target, so `https://www.example.com:443/path` will become `www.example.com:443`.                                                               |
 | {config}      | This variable holds the path to the "config" directory specified via the  `--config`  flag.                                                                                                                                                                                                                      |
 | {ports}       | This is a special variable specifically for the  `validation_scan`  phase of the tool. This will be replaced with the ports that  `masscan`  discovered to be open during the  `port_scan`  phase.                                                                                                               |
 
