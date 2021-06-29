@@ -176,6 +176,7 @@ def parse_config(config: str):
     try:
         with open(f"{config}/arves.json") as f:
             commands = json.load(f)
+        v(f"Configuration file {config} parsed successfully.")
     except FileNotFoundError as err:
         e(f"Could not open config file: {config}/arves.json")
 
@@ -217,7 +218,7 @@ def check_bins(commands: List):
     # missing, but we will continue going through the loop to see if anything else is missing
     passed = True
 
-    for phase, cmd_list in commands.items():
+    for _, cmd_list in commands.items():
         for cmd in cmd_list:
             # shutil.which is basically just the platform independant `which` command
             # this line just checks to see if the binary name is in the path
@@ -306,6 +307,7 @@ def collect_domains(output: str, input_domains: str, domain_file: str):
         f.write("\n".join(domains))
 
     # Return the path to the domain file
+    v(f"{len(domains)} input domains collected in {domain_file}.")
     return domain_file
 
 
@@ -332,6 +334,7 @@ def collect_subdomains(output: str):
     with open(sub_file, "w") as f:
         f.write("\n".join(subs))
 
+    v(f"{len(subs)} subdomains discovered and collected in {sub_file}.")
     return sub_file
 
 
@@ -404,6 +407,8 @@ def collect_ips(output: str, include_file: str, exclude_file: str):
         f.write("\n")
         f.write("\n".join(ips))
 
+    v(f"{len(hosts) + len(ips)} targets (hostnames + IPs) discovered and collected in {host_file}.")
+    v(f"{len(ips)} IP addresses discovered and collected in {ip_file}.")
     return ip_file
 
 
@@ -434,9 +439,11 @@ def collect_ports(output: str):
     ports = ",".join(ports)
 
     # Write the discovered ports to a file
-    with open(os.path.join(targets_folder, "ports.txt"), "w") as f:
+    port_file = os.path.join(targets_folder, "ports.txt")
+    with open(port_file, "w") as f:
         f.write(ports)
 
+    v(f"{len(ports)} ports discovered and collected in {port_file}.")
     return (ports, os.path.join(targets_folder, "hosts.txt"))
 
 
@@ -470,6 +477,7 @@ def collect_webservers(output: str):
     with open(webserver_file, "w") as f:
         f.write("\n".join(webservers))
 
+    v(f"{len(webservers)} webservers discovered and collected in {webserver_file}.")
     return webserver_file
 
 
@@ -500,6 +508,15 @@ class Phase:
         with open(target_file) as f:
             return f.read().splitlines()
 
+    @staticmethod
+    def _replace_vars(line: str, **kwargs):
+        """
+        Replace the {vars} in the line with the values stored in the kwargs
+        """
+        for key, val in kwargs.items():
+            line = line.replace(f"{{{key}}}", val)
+        return line
+
     async def _run_cmd(self, cmd, **kwargs):
         """
         This funciton acts as a wrapper around subprocess.run to run commands. Dynamic input such as
@@ -515,8 +532,7 @@ class Phase:
         async with self.sem:
             # Build the command
             shell_cmd = f"{cmd.get('bin')} {cmd.get('args')}"
-            for key, val in kwargs.items():
-                shell_cmd = shell_cmd.replace(f"{{{key}}}", val)
+            shell_cmd = self._replace_vars(shell_cmd, **kwargs)
 
             # Get the STDIN input (if it was provided)
             stdin = cmd.get("stdin", None)
@@ -526,8 +542,7 @@ class Phase:
                 # This pipe will tell the create_subprocess_shell method to
                 # expect data from STDIN
                 input_pipe = asyncio.subprocess.PIPE
-                for key, val in kwargs.items():
-                    stdin = stdin.replace(f"{{{key}}}", val)
+                stdin = self._replace_vars(stdin, **kwargs)
                 # convert STDIN into bytes
                 stdin = bytes(stdin, encoding="utf8")
             else:
@@ -552,16 +567,27 @@ class Phase:
             # Send whatever STDIN there is to the process, then wait
             # for the command to exit and return stdout and stderr
             stdout, stderr = await proc.communicate(input=stdin)
+
+            # If the command executed successfully, inform the user
             if proc.returncode == 0:
                 i(f"Command {shell_cmd!r} exited with code: {proc.returncode}")
+            # If the command failed, WARN the user
             else:
                 w(f"Command {shell_cmd!r} exited with code: {proc.returncode}")
 
             # Get the name of the log file from the output variable
             filename = kwargs.get("output").split("/")[-1]
 
+            # Check to see if the logfile already exists, if it does then increment the number on the end
+            logfile = os.path.join(self.log_dir, filename)
+            if os.path.isfile(logfile):
+                append = 1
+                while os.path.isfile(f"{logfile}.{append}"):
+                    append += 1
+                logfile = f"{logfile}.{append}"
+
             # Write the command output to a write to a log file
-            with open(os.path.join(self.log_dir, filename), "w") as f:
+            with open(logfile, "w") as f:
                 if stderr:
                     f.write(f"[stderr]\n{stderr.decode()}")
                 if stdout:
@@ -768,4 +794,4 @@ if __name__ == "__main__":
     try:
         asyncio.run(main())
     except asyncio.CancelledError:
-        i("Ending execution...")
+        i("Exiting Program.")
