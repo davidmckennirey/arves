@@ -464,7 +464,7 @@ def collect_webservers(output: str):
     for host in parser.hosts:
         for service in host.services:
             if service.state == "open":
-                if "https" in service.service:
+                if "https" in service.service or "ssl/http" in service.service:
                     webservers.add(f"https://{host.address}:{service.port}")
                     for hostname in host.hostnames:
                         webservers.add(f"https://{hostname}:{service.port}")
