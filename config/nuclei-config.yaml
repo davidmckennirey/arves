@@ -15,11 +15,7 @@ templates:
 - cves
 - default-logins
 - exposures
-- fuzzing
-- headless
-- iot
 - misconfiguration
-- network
 - takeovers
 - vulnerabilities
 
