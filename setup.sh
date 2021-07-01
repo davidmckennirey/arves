@@ -8,12 +8,12 @@ check_go_bin() {
 }
 
 echo "Running ARVES installation script..."
-$passed = 1
+passed = 1
 
 if ! loc=$(command -v go)
 then
     echo "Could not find go on the \$PATH.\nPlease install golang [apt install golang | brew install golang]."
-    $passed = 0
+    passed = 0
 else
     echo "Found go on the \$PATH: $loc"
 
@@ -41,7 +41,7 @@ if ! loc=$(command -v aquatone)
 then
     echo "Could not find aquatone on the \$PATH."
     echo "Aquatone has build issues so you have to download the correct version for your OS and put it in your \$PATH. (https://github.com/michenriksen/aquatone/releases/)"
-    $passed = 0
+    passed = 0
 else
     echo "Found aquatone on the \$PATH: $loc"
 fi
@@ -52,7 +52,7 @@ if ! loc=$(command -v massdns)
 then
     echo "Could not find massdns on the \$PATH."
     echo "Download and build massdns from its github repo. (https://github.com/blechschmidt/massdns)"
-    $passed = 0
+    passed = 0
 else
     echo "Found massdns on the \$PATH: $loc"
 fi
@@ -61,7 +61,7 @@ if ! loc=$(command -v masscan)
 then
     echo "Could not find masscan on the \$PATH."
     echo "Download and build masscan from its github repo. (https://github.com/robertdavidgraham/masscan)"
-    $passed = 0
+    passed = 0
 else
     echo "Found masscan on the \$PATH: $loc"
 fi
@@ -70,7 +70,7 @@ if ! loc=$(command -v nmap)
 then
     echo "Could not find nmap on the \$PATH."
     echo "There are like a million ways to install nmap, so I will let you figure that one out."
-    $passed = 0
+    passed = 0
 else
     echo "Found nmap on the \$PATH: $loc"
 fi
@@ -85,7 +85,7 @@ if test -f "./config/resolvers.txt"; then
 else
     echo "No resolvers.txt file found in config directory"
     echo "Generate a resolvers.txt file using the dnsvalidator project (https://github.com/vortexau/dnsvalidator) and save it to the config directory."
-    $passed = 0
+    passed = 0
 fi
 
 echo "Checking for all.txt file in config directory..."
@@ -94,7 +94,7 @@ if test -f "./config/all.txt"; then
 else
     echo "No all.txt file found in config directory"
     echo "Add a subdomain wordlist in your config directory called 'all.txt', I recommend the dns-Jhaddix.txt wordlist from SecLists (https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/DNS/dns-Jhaddix.txt)"
-    $passed = 0
+    passed = 0
 fi
 
 if $passed; then
