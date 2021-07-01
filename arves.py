@@ -147,18 +147,17 @@ def cli():
 
     args = parser.parse_args()
 
-    if args.phase and not args.target_file:
-        e("If the --phase flag is provided then a --target-file must also be provided")
-    if args.target_file and not args.phase:
-        e("A --target-file was provided but no --phase was provided")
-
-    # TODO do more error checking here, such as checking that all provided files exist
-
     # Seting the verbose and color flags
     global verbose
     global color
     verbose = args.verbose
     color = not args.no_color
+
+    # TODO do more error checking here, such as checking that all provided files exist
+    if args.phase and not args.target_file:
+        e("If the --phase flag is provided then a --target-file must also be provided")
+    if args.target_file and not args.phase:
+        e("A --target-file was provided but no --phase was provided")
 
     return args
 
@@ -436,6 +435,7 @@ def collect_ports(output: str):
                     ports.add(str(port.get("port")))
 
     # Format the ports in nmap style
+    ports_len = len(ports)
     ports = ",".join(ports)
 
     # Write the discovered ports to a file
@@ -443,7 +443,7 @@ def collect_ports(output: str):
     with open(port_file, "w") as f:
         f.write(ports)
 
-    v(f"{len(ports)} ports discovered and collected in {port_file}.")
+    v(f"{ports_len} ports discovered and collected in {port_file}.")
     return (ports, os.path.join(targets_folder, "hosts.txt"))
 
 
@@ -712,13 +712,17 @@ async def main():
     os.makedirs(os.path.join(args.output, "targets"), exist_ok=True)
 
     if args.phase:
-        await Phase(
-            args.phase,
-            commands.get(args.phase),
-            target_file=args.target_file,
-            output=args.output,
-            workers=args.workers,
-        ).run(config=args.config)
+        c = commands.get(args.phase, False)
+        if c:
+            await Phase(
+                args.phase,
+                commands=c,
+                target_file=args.target_file,
+                output=args.output,
+                workers=args.workers,
+            ).run(config=args.config)
+        else:
+            e(f"Invalid phase ({args.phase}) provided")
     else:
         # Create the initial "domains" target file
         target_file = collect_domains(
