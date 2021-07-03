@@ -261,9 +261,13 @@ def read_target_file(target_file: str, resolve_hostnames: bool):
             if resolve_hostnames:
                 # Resolve the hostname then pass each IP address to the ip_network function
                 # to be added to the cidrs pool
-                _, _, resolved_ips = socket.gethostbyname_ex(target)
-                for ip in resolved_ips:
-                    cidrs.add(ipaddress.ip_network(ip, strict=False))
+                try:
+                    _, _, resolved_ips = socket.gethostbyname_ex(target)
+                    for ip in resolved_ips:
+                        cidrs.add(ipaddress.ip_network(ip, strict=False))
+                except socket.gaierror:
+                    # This is hit if the hostname is unresolvable
+                    w(f"Unresolvable hostname in the input file: {target}")
 
     # get all the individual ip addresses from the CIDRs
     for cidr in cidrs:
